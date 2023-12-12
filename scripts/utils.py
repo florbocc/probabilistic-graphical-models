@@ -9,16 +9,20 @@ class FileError(ValueError):
 
 @dataclass
 class Files:
-    input_folder: str
+    datasets_folder: str
     output_base_folder: str = './data/output'
 
     def __post_init__(self):
         # Input
-        if not os.path.exists(self.input_folder):
+        if not os.path.exists(self.datasets_folder):
             raise FileError("Invalid Input Data."
                             "File Path Does Not Exist")
-        # TODO: Check that is a valid input with all txt needed!
-
+        self.celeba_dataset_filepath = os.path.join(
+            self.datasets_folder,
+            'celeba')
+        if not os.path.exists(self.celeba_dataset_filepath):
+            raise FileError("Invalid Input Data."
+                            "Dataset CelebA not found.")
         # Output
         self.output_name = time.strftime("%Y_%m_%d_%H_%M_%S")
         self.output_folder = os.path.join(
