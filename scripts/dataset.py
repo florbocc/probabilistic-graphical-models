@@ -1,6 +1,7 @@
 import os
 from typing import Any, Tuple
 import PIL
+import torch
 from torchvision.datasets import CelebA
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
@@ -15,10 +16,12 @@ CELEBA_EASY_LABELS = ['Arched_Eyebrows', 'Bags_Under_Eyes', 'Bangs', 'Black_Hair
                       'No_Beard', 'Pale_Skin', 'Receding_Hairline', 'Smiling', 'Wavy_Hair', 'Wearing_Necktie', 'Young']
 
 
-class SimplifiedCelebA(CelebA):
+class ModifiedCelebA(CelebA):
+    valid_labels_index = [i for i, l in enumerate(CELEBA_LABELS) if l in CELEBA_EASY_LABELS]
+    _prior_params = torch.ones(1, len(CELEBA_EASY_LABELS)) / 2
+
     # Class to only use easy labels
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
-        valid_targets = [i for i, l in enumerate(CELEBA_LABELS) if l in CELEBA_EASY_LABELS]
         target = self.attr[index].float()
         imagepath = os.path.join(
             self.root,
@@ -26,9 +29,16 @@ class SimplifiedCelebA(CelebA):
             "img_align_celeba",
             self.filename[index])
         X = self.transform(PIL.Image.open(imagepath))
-        target = target[valid_targets]
+        target = target[self.valid_labels_index]
         return X, target
 
+    def update_prior(self):
+        self._prior_params = torch.mean(
+            self.attr[:, self.valid_labels_index].float(),
+            dim=0)
+
+    def labels_prior_params(self):
+        return self._prior_params
 
 
 def setup_data_loaders(
@@ -42,34 +52,36 @@ def setup_data_loaders(
                                 transforms.Resize((64, 64)),
                                 transforms.ToTensor()
                             ])
-    test_data = SimplifiedCelebA(dataset_folderbase,
-                                 split='test',
-                                 transform=transform,
-                                 *args,
-                                 **kwargs)
-    train_data = SimplifiedCelebA(dataset_folderbase,
-                                  split='train',
-                                  transform=transform,
-                                  *args,
-                                  **kwargs)
+    test_data = ModifiedCelebA(
+        dataset_folderbase,
+        split='test',
+        transform=transform,
+        *args,
+        **kwargs)
+    train_data = ModifiedCelebA(
+        dataset_folderbase,
+        split='train',
+        transform=transform,
+        *args,
+        **kwargs)
 
     # FIXME: This could be improved :)
     # The class CelebA do not have a copy method :(
     # The following lines are a go around to avoid creating
     # a new class.
-    supervised_train_data = SimplifiedCelebA(
+    supervised_train_data = ModifiedCelebA(
         dataset_folderbase,
         split='train',
         transform=transform,
         *args,
         **kwargs)
-    unsupervised_train_data = SimplifiedCelebA(
+    unsupervised_train_data = ModifiedCelebA(
         dataset_folderbase,
         split='train',
         transform=transform,
         *args,
         **kwargs)
-    validation_data = SimplifiedCelebA(
+    validation_data = ModifiedCelebA(
         dataset_folderbase,
         split='valid',
         transform=transform,
@@ -85,6 +97,7 @@ def setup_data_loaders(
     split = int(supervised_fraction * len(X))
     supervised_train_data.attr = y[:split]
     supervised_train_data.filename = X[:split]
+    supervised_train_data.update_prior()
     unsupervised_train_data.attr = y[split:]
     unsupervised_train_data.filename = X[split:]
 
