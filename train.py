@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import torch
 from tqdm import tqdm
 from scripts.dataset import setup_data_loaders
+from scripts.model import CCVAE
 from scripts.utils import Files
 
 
@@ -28,39 +29,43 @@ def main(arguments):
             len(data_loaders['unsupervised'])
         Tsup = batches_per_epoch // len(data_loaders['supervised'])
 
-        model = CCVAE()
+        model = CCVAE(z_dim=45,
+                      y_prior_params=data_loaders['test'].dataset.labels_prior_params(),
+                      num_classes=18,
+                      device=device,
+                      image_shape=im_shape
+                      )
         optimizer = torch.optim.Adam(
             params=model.parameters(),
             lr=arguments.learning_rate)
 
-        # In this case we want to train with both supervised  
+        # In this case we want to train with both supervised
         # and unsupervised dataset. The first one is going to
         # be iterated at a period Tsup
         for i in tqdm(range(batches_per_epoch)):
-            if i % Tsup == 0:
-                (images, labels) = next(supervised_batch)
-                model.supervised(images, labels)
-                loss = model.loss()
-                epoch_loss_supervised+=loss.detach().item()
-            else:
-                (images, labels) = next(unsupervised_batch)
-                model.unsupervised(images, labels)
-                loss = model.loss()
-                epoch_loss_unsupervised+=loss.detach().item()
-            
+            # if i % Tsup == 0:
+            #    (images, labels) = next(supervised_batch)
+            #    model.supervised(images, labels)
+            #    loss = model.loss()
+            #    epoch_loss_supervised+=loss.detach().item()
+            #else:
+            (images, _) = next(unsupervised_batch)
+            loss = model.unsupervised_ELBO(images)
+            epoch_loss_unsupervised+=loss.detach().item()
+        
             # backward
             loss.backward()
             # optimization step
             optimizer.step()
             optimizer.zero_grad()
             # validation
-            with torch.no_grad():
-                validation_accuracy = model.accuracy(
-                    data_loaders['validation'])
-        print(f"[Epoch {epoch}] Sup Loss "
-              f"{epoch_loss_supervised:.3f},"
-              f" Unsup Loss {epoch_loss_unsupervised:.3f},"
-              f" Val Acc {validation_accuracy:.2f}")
+            #with torch.no_grad():
+            #    validation_accuracy = model.accuracy(
+            #        data_loaders['validation'])
+        #print(f"[Epoch {epoch}] Sup Loss "
+        #      f"{epoch_loss_supervised:.3f},"
+        #      f" Unsup Loss {epoch_loss_unsupervised:.3f},"
+        #      f" Val Acc {validation_accuracy:.2f}")
     print()
 
 
@@ -81,7 +86,12 @@ if __name__ == "__main__":
                         type=int,
                         help='Batch size'
                         )
-    
+    parser.add_argument('--learning_rate',
+                        default=1e-4,
+                        type=float,
+                        help='Learning rate'
+                        )
+
     parser.add_argument('--max_epochs',
                         default=200,
                         type=int,
