@@ -14,6 +14,7 @@ def main(arguments):
     im_shape = (3, 64, 64)
     device = torch.device('cuda:0' if (torch.cuda.is_available()) else 'cpu')
     files = Files(arguments.datasets_path)
+    print('Loading and Splitting Dataset')
     data_loaders = setup_data_loaders(
         files.datasets_folder,
         arguments.supervised_fraction,
@@ -45,7 +46,7 @@ def main(arguments):
         # In this case we want to train with both supervised
         # and unsupervised dataset. The first one is going to
         # be iterated at a period Tsup
-        for i in tqdm(range(batches_per_epoch)):
+        for i in tqdm(range(batches_per_epoch), desc='Batch per epoch'):
             if i % Tsup == 0:
                 (images, labels) = next(supervised_batch)
                 loss = model.supervised_ELBO(
