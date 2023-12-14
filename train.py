@@ -43,28 +43,28 @@ def main(arguments):
         # and unsupervised dataset. The first one is going to
         # be iterated at a period Tsup
         for i in tqdm(range(batches_per_epoch)):
-            # if i % Tsup == 0:
-            #    (images, labels) = next(supervised_batch)
-            #    model.supervised(images, labels)
-            #    loss = model.loss()
-            #    epoch_loss_supervised+=loss.detach().item()
-            #else:
-            (images, _) = next(unsupervised_batch)
-            loss = model.unsupervised_ELBO(images)
-            epoch_loss_unsupervised+=loss.detach().item()
-        
+            if i % Tsup == 0:
+                (images, labels) = next(supervised_batch)
+                loss = model.supervised_ELBO(images, labels)
+                epoch_loss_supervised+=loss.detach().item()
+            else:
+                (images, _) = next(unsupervised_batch)
+                loss = model.unsupervised_ELBO(images)
+                epoch_loss_unsupervised+=loss.detach().item()
+            
             # backward
             loss.backward()
             # optimization step
             optimizer.step()
             optimizer.zero_grad()
             # validation
-            #with torch.no_grad():
+            # with torch.no_grad():
             #    validation_accuracy = model.accuracy(
             #        data_loaders['validation'])
-        #print(f"[Epoch {epoch}] Sup Loss "
-        #      f"{epoch_loss_supervised:.3f},"
-        #      f" Unsup Loss {epoch_loss_unsupervised:.3f},"
+        print(f"[Epoch {epoch}] Sup Loss "
+              f"{epoch_loss_supervised:.3f},"
+              f" Unsup Loss {epoch_loss_unsupervised:.3f},"
+        )
         #      f" Val Acc {validation_accuracy:.2f}")
     print()
 
