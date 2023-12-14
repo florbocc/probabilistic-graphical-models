@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 import torch
 from tqdm import tqdm
-from scripts.dataset import setup_data_loaders
+from scripts.dataset import setup_data_loaders, CELEBA_EASY_LABELS
 from scripts.model import CCVAE
 from scripts.utils import Files
 from torch.utils.tensorboard import SummaryWriter
@@ -28,14 +28,13 @@ def main(arguments):
         supervised_batch = iter(data_loaders['supervised'])
         unsupervised_batch = iter(data_loaders['unsupervised'])
         # FIXME: Again not considering limits 0 and 1
-        batches_per_epoch = len(data_loaders['supervised']) +\
-            len(data_loaders['unsupervised'])
         n_supervised_batches = len(data_loaders['supervised'])
+        batches_per_epoch = n_supervised_batches +\
+            len(data_loaders['unsupervised'])
         Tsup = batches_per_epoch // n_supervised_batches
-
         model = CCVAE(z_dim=45,
                       y_prior_params=data_loaders['test'].dataset.labels_prior_params().to(device=device),
-                      num_classes=18,
+                      num_classes=len(CELEBA_EASY_LABELS),
                       device=device,
                       image_shape=im_shape
                       )

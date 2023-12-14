@@ -73,12 +73,12 @@ class CCVAE(nn.Module):
         return log_q_varphi_phi_y_x
 
     def supervised_ELBO(self,
-                        images: torch.tensor,
-                        labels: torch.tensor):
-        batch_size = images.shape[0]
+                        x: torch.tensor,
+                        y: torch.tensor):
+        batch_size = x.shape[0]
 
         # posterior parameters
-        params_phi = self.encoder(images)
+        params_phi = self.encoder(x)
 
         # the approximate posterior
         q_phi_z_x = dist.Normal(*params_phi)
@@ -95,10 +95,10 @@ class CCVAE(nn.Module):
         logits_c = self.classifier(zc)
         # the label predicted distribution
         q_varphi_y_zc = dist.Bernoulli(logits=logits_c)
-        log_q_varphi_y_zc = q_varphi_y_zc.log_prob(labels).sum(dim=-1)
+        log_q_varphi_y_zc = q_varphi_y_zc.log_prob(y).sum(dim=-1)
 
         # Conditional Prior
-        mu_psi, sigma_psi = self.conditional_prior(labels)
+        mu_psi, sigma_psi = self.conditional_prior(y)
         params_psi = (
             torch.cat([mu_psi, torch.zeros(1, self.num_unlabeled, device=self.device).expand(batch_size, -1)], dim=1),
             torch.cat([sigma_psi, torch.ones(1, self.num_unlabeled, device=self.device).expand(batch_size, -1)], dim=1))
@@ -106,22 +106,23 @@ class CCVAE(nn.Module):
 
         # The prior labeled data
         p = self.y_prior_params.expand(batch_size, -1)
-        log_py = dist.Bernoulli(p).log_prob(labels).sum(dim=-1)
+        log_py = dist.Bernoulli(p).log_prob(y).sum(dim=-1)
 
         # Classifier Loss
-        log_q_varphi_phi_y_x = self.classifier_loss(images, labels)
+        log_q_varphi_phi_y_x = self.classifier_loss(x, y)
+
         # Generative model distribution
         p_theta_x_z = dist.Laplace(r, torch.ones_like(r))
-        log_p_theta_x_z = p_theta_x_z.log_prob(images).sum(dim=(1,2,3))
+        log_p_theta_x_z = p_theta_x_z.log_prob(x).sum(dim=(1,2,3))
 
         # Following appendix c.3.1
         q_phi_y_zc_ = dist.Bernoulli(logits=self.classifier(zc.detach()))
-        log_q_phi_y_zc_ = q_phi_y_zc_.log_prob(labels).sum(dim=-1)
+        log_q_phi_y_zc_ = q_phi_y_zc_.log_prob(y).sum(dim=-1)
         w = torch.exp(log_q_phi_y_zc_ - log_q_varphi_phi_y_x)
 
         # ELBO
         kl = dist.kl.kl_divergence(q_phi_z_x, p_psi_z_y).sum(dim=-1)
-        elbo = (w * (log_p_theta_x_z - kl - log_q_varphi_y_zc)+ log_py + log_q_varphi_phi_y_x).mean()
+        elbo = (w * (log_p_theta_x_z - kl - log_q_varphi_y_zc) + log_py + log_q_varphi_phi_y_x).mean()
         return -elbo
 
     def unsupervised_ELBO(self,
