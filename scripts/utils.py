@@ -15,8 +15,7 @@ class Files:
     def __post_init__(self):
         # Input
         if not os.path.exists(self.datasets_folder):
-            raise FileError("Invalid Input Data."
-                            "File Path Does Not Exist")
+            os.makedirs(self.datasets_folder)
         self.celeba_dataset_filepath = os.path.join(
             self.datasets_folder,
             'celeba')
