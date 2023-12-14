@@ -6,9 +6,11 @@ from tqdm import tqdm
 from scripts.dataset import setup_data_loaders
 from scripts.model import CCVAE
 from scripts.utils import Files
+from torch.utils.tensorboard import SummaryWriter
 
 
 def main(arguments):
+    writer = SummaryWriter()
     im_shape = (3, 64, 64)
     device = torch.device('cuda:0' if (torch.cuda.is_available()) else 'cpu')
     files = Files(arguments.datasets_path)
@@ -68,9 +70,9 @@ def main(arguments):
               f"{epoch_loss_supervised:.3f},"
               f" Unsup Loss {epoch_loss_unsupervised:.3f},"
         )
-        #      f" Val Acc {validation_accuracy:.2f}")
-    print()
-
+        writer.add_scalar('Loss/train_supervised', epoch_loss_supervised, epoch)
+        writer.add_scalar('Loss/train_unsupervised', epoch_loss_unsupervised, epoch)
+    writer.close()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
