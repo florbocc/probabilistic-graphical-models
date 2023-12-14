@@ -81,8 +81,8 @@ class CCVAE(nn.Module):
         # Conditional Prior
         mu_psi, sigma_psi = self.conditional_prior(labels)
         params_psi = (
-            torch.cat([mu_psi, torch.zeros(1, self.num_unlabeled).expand(batch_size, -1)], dim=1),
-            torch.cat([sigma_psi, torch.ones(1, self.num_unlabeled).expand(batch_size, -1)], dim=1))
+            torch.cat([mu_psi, torch.zeros(1, self.num_unlabeled, device=self.device).expand(batch_size, -1)], dim=1),
+            torch.cat([sigma_psi, torch.ones(1, self.num_unlabeled, device=self.device).expand(batch_size, -1)], dim=1))
         p_psi_z_y = dist.Normal(*params_psi)
 
         # The prior labeled data
@@ -132,8 +132,8 @@ class CCVAE(nn.Module):
         # Conditional Prior
         mu_psi, sigma_psi = self.conditional_prior(y)
         params_psi = (
-            torch.cat([mu_psi, torch.zeros(1, self.num_unlabeled).expand(batch_size, -1)], dim=1),
-            torch.cat([sigma_psi, torch.ones(1, self.num_unlabeled).expand(batch_size, -1)], dim=1))
+            torch.cat([mu_psi, torch.zeros(1, self.num_unlabeled, device=self.device).expand(batch_size, -1)], dim=1),
+            torch.cat([sigma_psi, torch.ones(1, self.num_unlabeled, device=self.device).expand(batch_size, -1)], dim=1))
         p_psi_z_y = dist.Normal(*params_psi)
 
         # The prior labeled data

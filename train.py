@@ -30,11 +30,12 @@ def main(arguments):
         Tsup = batches_per_epoch // len(data_loaders['supervised'])
 
         model = CCVAE(z_dim=45,
-                      y_prior_params=data_loaders['test'].dataset.labels_prior_params(),
+                      y_prior_params=data_loaders['test'].dataset.labels_prior_params().to(device=device),
                       num_classes=18,
                       device=device,
                       image_shape=im_shape
                       )
+        model.to(device)
         optimizer = torch.optim.Adam(
             params=model.parameters(),
             lr=arguments.learning_rate)
@@ -45,11 +46,13 @@ def main(arguments):
         for i in tqdm(range(batches_per_epoch)):
             if i % Tsup == 0:
                 (images, labels) = next(supervised_batch)
-                loss = model.supervised_ELBO(images, labels)
+                loss = model.supervised_ELBO(
+                    images.to(device),
+                    labels.to(device))
                 epoch_loss_supervised+=loss.detach().item()
             else:
                 (images, _) = next(unsupervised_batch)
-                loss = model.unsupervised_ELBO(images)
+                loss = model.unsupervised_ELBO(images.to(device))
                 epoch_loss_unsupervised+=loss.detach().item()
             
             # backward
