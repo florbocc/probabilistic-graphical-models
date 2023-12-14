@@ -64,15 +64,16 @@ def main(arguments):
             optimizer.step()
             optimizer.zero_grad()
             # validation
-            # with torch.no_grad():
-            #    validation_accuracy = model.accuracy(
-            #        data_loaders['validation'])
+            with torch.no_grad():
+                validation_accuracy = model.accuracy(
+                    data_loaders['validation'])
         print(f"[Epoch {epoch}] Sup Loss "
               f"{epoch_loss_supervised:.3f},"
               f" Unsup Loss {epoch_loss_unsupervised:.3f},"
         )
         writer.add_scalar('Loss/train_supervised', epoch_loss_supervised, epoch)
         writer.add_scalar('Loss/train_unsupervised', epoch_loss_unsupervised, epoch)
+        writer.add_scalar('accuracy', validation_accuracy, epoch)
     writer.close()
 
 if __name__ == "__main__":

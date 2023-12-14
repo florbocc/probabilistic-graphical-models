@@ -1,21 +1,10 @@
-# In this file i will have
-# - class for training parameters
-# - class for encoder
-# - class for decoder
-# - class for classifier
-# - class ccvae which:
-#       - defines ccvae arquitecture
-#       - receive an object of class batch (sup or unsup) 
-#       and computes the forward ())
-#       - Computes the ELBO
-#       - Apendice C
-#
 import numpy as np
 import torch.distributions as dist
 import torch
+from torch.utils.data import DataLoader
 import torch.nn as nn
 
-from scripts.model_sub_arquitectures import Classifier, CondPrior, Decoder, Encoder
+from scripts.model_sub_architectures import Classifier, CondPrior, Decoder, Encoder
 
 
 class CCVAE(nn.Module):
@@ -39,7 +28,35 @@ class CCVAE(nn.Module):
         self.classifier = Classifier(self.num_labeled)
         self.conditional_prior = CondPrior(self.num_labeled)
 
-    def classifier_loss(self, x, y, k=100):
+    def accuracy(
+            self,
+            test_data_loader: DataLoader,
+            *args,
+            **kwargs):
+        acc = 0
+        for (image, label) in test_data_loader:
+            batch_acc = self.classification_accuracy(
+                image.to(device=self.device),
+                label.to(device=self.device)
+            )
+            acc += batch_acc
+        return acc
+
+    def classification_accuracy(self,
+                                x: torch.tensor,
+                                y: torch.tensor):
+        # Classificate x using Monte Carlo with only one sample:
+        params_phi = self.encoder(x)
+        z = dist.Normal(*params_phi).rsample()
+        zc, _ = z.split([self.num_labeled, self.num_unlabeled], -1)
+        logits = self.classifier(zc.view(-1, self.num_labeled))
+        p = torch.sigmoid(logits)
+        return p.eq(y).float().mean()
+
+    def classifier_loss(self,
+                        x: torch.tensor,
+                        y: torch.tensor,
+                        k: int = 100):
         # Obtain k samples of  the latent space
         params_phi = self.encoder(x)
         z = dist.Normal(*params_phi).rsample(torch.tensor([k]))
@@ -55,7 +72,9 @@ class CCVAE(nn.Module):
         log_q_varphi_phi_y_x = torch.logsumexp(log_q_varphi_y_zc, dim=0) - np.log(k)
         return log_q_varphi_phi_y_x
 
-    def supervised_ELBO(self, images, labels):
+    def supervised_ELBO(self,
+                        images: torch.tensor,
+                        labels: torch.tensor):
         batch_size = images.shape[0]
 
         # posterior parameters
@@ -105,7 +124,8 @@ class CCVAE(nn.Module):
         elbo = (w * (log_p_theta_x_z - kl - log_q_varphi_y_zc)+ log_py + log_q_varphi_phi_y_x).mean()
         return -elbo
 
-    def unsupervised_ELBO(self, images):
+    def unsupervised_ELBO(self,
+                          images: torch.tensor):
         batch_size = images.shape[0]
 
         # posterior parameters
