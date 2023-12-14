@@ -30,7 +30,8 @@ def main(arguments):
         # FIXME: Again not considering limits 0 and 1
         batches_per_epoch = len(data_loaders['supervised']) +\
             len(data_loaders['unsupervised'])
-        Tsup = batches_per_epoch // len(data_loaders['supervised'])
+        n_supervised_batches = len(data_loaders['supervised'])
+        Tsup = batches_per_epoch // n_supervised_batches
 
         model = CCVAE(z_dim=45,
                       y_prior_params=data_loaders['test'].dataset.labels_prior_params().to(device=device),
@@ -42,17 +43,19 @@ def main(arguments):
         optimizer = torch.optim.Adam(
             params=model.parameters(),
             lr=arguments.learning_rate)
+        count_sup = 0
 
         # In this case we want to train with both supervised
         # and unsupervised dataset. The first one is going to
         # be iterated at a period Tsup
         for i in tqdm(range(batches_per_epoch), desc='Batch per epoch'):
-            if i % Tsup == 0:
+            if i % Tsup == 0 and count_sup < n_supervised_batches:
                 (images, labels) = next(supervised_batch)
                 loss = model.supervised_ELBO(
                     images.to(device),
                     labels.to(device))
                 epoch_loss_supervised+=loss.detach().item()
+                count_sup += 1
             else:
                 (images, _) = next(unsupervised_batch)
                 loss = model.unsupervised_ELBO(images.to(device))
