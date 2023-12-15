@@ -67,10 +67,10 @@ def main(arguments):
             # optimization step
             optimizer.step()
             optimizer.zero_grad()
-            # validation
-            with torch.no_grad():
-                validation_accuracy = model.accuracy(
-                    data_loaders['validation'])
+        # validation
+        with torch.no_grad():
+            validation_accuracy = model.accuracy(
+                data_loaders['validation'])
         print(f"[Epoch {epoch}] Sup Loss "
               f"{epoch_loss_supervised:.3f},"
               f" Unsup Loss {epoch_loss_unsupervised:.3f},"
