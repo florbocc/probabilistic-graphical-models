@@ -68,7 +68,7 @@ class CCVAE(nn.Module):
 
         # Classifier loss
         y = y.expand(k, -1, -1).contiguous().view(-1, self.num_labeled)
-        log_q_varphi_y_zc = q_varphi_y_zc.log_prob(y).sum(dim=-1)
+        log_q_varphi_y_zc = q_varphi_y_zc.log_prob(y).view(k, x.shape[0], self.num_labeled).sum(dim=-1)
         log_q_varphi_phi_y_x = torch.logsumexp(log_q_varphi_y_zc, dim=0) - np.log(k)
         return log_q_varphi_phi_y_x
 
@@ -158,7 +158,7 @@ class CCVAE(nn.Module):
         p_psi_z_y = dist.Normal(*params_psi)
 
         # The prior labeled data
-        p = self.y_prior_params.expand(batch_size, -1)
+        p = 0.5 * torch.ones_like(self.y_prior_params).expand(batch_size, -1)
         log_py = dist.Bernoulli(p).log_prob(y).sum(dim=-1)
 
         # Generative model distribution

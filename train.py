@@ -20,28 +20,30 @@ def main(arguments):
         arguments.supervised_fraction,
         batch_size=arguments.batch_size,
         validation_size=arguments.validation_size)
-
+    
+    model = CCVAE(z_dim=45,
+                      y_prior_params=data_loaders['supervised'].dataset.labels_prior_params().to(device=device),
+                      num_classes=len(CELEBA_EASY_LABELS),
+                      device=device,
+                      image_shape=im_shape
+                      )
+    model.to(device)
+    optimizer = torch.optim.Adam(
+        params=model.parameters(),
+        lr=arguments.learning_rate)
+    
     for epoch in range(arguments.max_epochs):
         epoch_loss_supervised = 0
         epoch_loss_unsupervised = 0
 
         supervised_batch = iter(data_loaders['supervised'])
         unsupervised_batch = iter(data_loaders['unsupervised'])
+        
         # FIXME: Again not considering limits 0 and 1
         n_supervised_batches = len(data_loaders['supervised'])
         batches_per_epoch = n_supervised_batches +\
             len(data_loaders['unsupervised'])
         Tsup = batches_per_epoch // n_supervised_batches
-        model = CCVAE(z_dim=45,
-                      y_prior_params=data_loaders['test'].dataset.labels_prior_params().to(device=device),
-                      num_classes=len(CELEBA_EASY_LABELS),
-                      device=device,
-                      image_shape=im_shape
-                      )
-        model.to(device)
-        optimizer = torch.optim.Adam(
-            params=model.parameters(),
-            lr=arguments.learning_rate)
         count_sup = 0
 
         # In this case we want to train with both supervised
