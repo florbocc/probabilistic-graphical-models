@@ -20,18 +20,19 @@ def main(arguments):
         arguments.supervised_fraction,
         batch_size=arguments.batch_size,
         validation_size=arguments.validation_size)
-    
-    model = CCVAE(z_dim=45,
-                      y_prior_params=data_loaders['supervised'].dataset.labels_prior_params().to(device=device),
-                      num_classes=len(CELEBA_EASY_LABELS),
-                      device=device,
-                      image_shape=im_shape
-                      )
+
+    model = CCVAE(
+        z_dim=arguments.z_dim,
+        y_prior_params=data_loaders['supervised'].dataset.labels_prior_params().to(device=device),
+        num_classes=len(CELEBA_EASY_LABELS),
+        device=device,
+        image_shape=im_shape
+        )
     model.to(device)
     optimizer = torch.optim.Adam(
         params=model.parameters(),
         lr=arguments.learning_rate)
-    
+
     for epoch in range(arguments.max_epochs):
         epoch_loss_supervised = 0
         epoch_loss_unsupervised = 0
@@ -74,11 +75,15 @@ def main(arguments):
         print(f"[Epoch {epoch}] Sup Loss "
               f"{epoch_loss_supervised:.3f},"
               f" Unsup Loss {epoch_loss_unsupervised:.3f},"
-        )
+              f" validation accuracy {validation_accuracy:.2f}"
+              )
         writer.add_scalar('Loss/train_supervised', epoch_loss_supervised, epoch)
         writer.add_scalar('Loss/train_unsupervised', epoch_loss_unsupervised, epoch)
         writer.add_scalar('accuracy', validation_accuracy, epoch)
+    test_accuracy = model.accuracy(data_loaders['test'])
+    print("Test acc %.3f" % test_accuracy)
     writer.close()
+    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -86,6 +91,11 @@ if __name__ == "__main__":
                         default='data/datasets',
                         type=str,
                         help='Dataset path'
+                        )
+    parser.add_argument('--z_dim',
+                        default=45,
+                        type=int,
+                        help='Latent space dimension'
                         )
     parser.add_argument('--supervised_fraction',
                         default=0.2,
@@ -104,7 +114,7 @@ if __name__ == "__main__":
                         )
 
     parser.add_argument('--max_epochs',
-                        default=200,
+                        default=35,
                         type=int,
                         help='Maximum number of epochs'
                         )

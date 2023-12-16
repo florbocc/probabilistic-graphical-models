@@ -3,6 +3,7 @@ import torch.distributions as dist
 import torch
 from torch.utils.data import DataLoader
 import torch.nn as nn
+import os
 
 from scripts.model_sub_architectures import Classifier, CondPrior, Decoder, Encoder
 
@@ -169,3 +170,9 @@ class CCVAE(nn.Module):
         kl = dist.kl.kl_divergence(q_phi_z_x, p_psi_z_y).sum(dim=-1)
         elbo = (log_p_theta_x_z + log_py - kl - log_q_varphi_y_zc).mean()
         return -elbo
+
+    def save(self, path:str):
+        torch.save(self.encoder, os.path.join(path,'encoder.pt'))
+        torch.save(self.decoder, os.path.join(path,'decoder.pt'))
+        torch.save(self.classifier, os.path.join(path,'classifier.pt'))
+        torch.save(self.cond_prior, os.path.join(path,'conditional_prior.pt'))
