@@ -1,13 +1,15 @@
 import argparse
-from dataclasses import dataclass
+import os
+import PIL
 
 import torch
+from torchvision.utils import save_image, make_grid
+import torch.distributions as dist
 from tqdm import tqdm
 from scripts.dataset import setup_data_loaders, CELEBA_EASY_LABELS
 from scripts.model import CCVAE
 from scripts.utils import Files
 from torch.utils.tensorboard import SummaryWriter
-
 
 def main(arguments):
     writer = SummaryWriter()
@@ -32,7 +34,14 @@ def main(arguments):
     optimizer = torch.optim.Adam(
         params=model.parameters(),
         lr=arguments.learning_rate)
-
+    if arguments.debug:
+        # Save original image 
+        debug_images_indices = [0, 50, 80, 90]
+        for index in debug_images_indices:
+            image_name = data_loaders['test'].dataset.filename[index]
+            image_filepath = os.path.join(files.celeba_dataset_filepath, 'img_align_celeba', image_name)
+            image = PIL.Image.open(image_filepath)
+            image.save(os.path.join(files.output_folder, 'original_'+image_name))
     for epoch in range(arguments.max_epochs):
         epoch_loss_supervised = 0
         epoch_loss_unsupervised = 0
@@ -74,15 +83,59 @@ def main(arguments):
                 data_loaders['validation'])
         print(f"[Epoch {epoch}] Sup Loss "
               f"{epoch_loss_supervised:.3f},"
-              f" Unsup Loss {epoch_loss_unsupervised:.3f},"
+               f" Unsup Loss {epoch_loss_unsupervised:.3f},"
               f" validation accuracy {validation_accuracy:.2f}"
               )
         writer.add_scalar('Loss/train_supervised', epoch_loss_supervised, epoch)
         writer.add_scalar('Loss/train_unsupervised', epoch_loss_unsupervised, epoch)
         writer.add_scalar('accuracy', validation_accuracy, epoch)
+
+        if arguments.debug:
+            # Save reconstruction of each image
+            transform = data_loaders['test'].dataset.transform
+            for index in debug_images_indices:
+                image_name = data_loaders['test'].dataset.filename[index]
+                image_filepath = os.path.join(files.celeba_dataset_filepath, 'img_align_celeba', image_name)
+                image = transform(PIL.Image.open(image_filepath))
+                r = model.reconstruction(image.to(device=device))
+                save_image(r, os.path.join(files.output_folder, f'epoch_{epoch}_'+image_name))
+            
+            # Latent walk at every step
+            # Given a selected label save 3 samples per epoch
+            selected_labels = ['Blond_Hair', 'Smiling', 'Wavy_Hair', 'Wearing_Necktie']
+            index_labels = [i for i, l in enumerate(CELEBA_EASY_LABELS) if l in selected_labels]
+            
+            #Select an image 
+            index = 0
+            image_name = data_loaders['test'].dataset.filename[index]
+            image_filepath = os.path.join(files.celeba_dataset_filepath, 'img_align_celeba', image_name)
+            image = transform(PIL.Image.open(image_filepath))
+            
+            a = 8
+            Ns = 5
+            z_ = dist.Normal(*model.encoder(image)).sample()
+            for index in index_labels:
+                z = z_.clone()
+                z = z.expand(Ns, -1).contiguous()
+                y = torch.zeros(1, len(CELEBA_EASY_LABELS), device=device)
+                mu_false, sigma_false = model.conditional_prior(y)
+                y[:, index].fill_(1.0)
+                mu_true, sigma_true = model.conditional_prior(y)
+                sign = torch.sign(mu_true[:, index] - mu_false[:, index])
+                z_false_lim = (mu_false[:, index] - a * sign * sigma_false[:, index]).item()    
+                z_true_lim = (mu_true[:, index] + a * sign * sigma_true[:, index]).item()
+                z[:, index] = torch.linspace(z_false_lim, z_true_lim, Ns)
+
+                imgs = model.decoder(z).view(-1, *im_shape)
+                grid = make_grid(imgs, nrow=Ns)
+                save_image(grid, os.path.join(files.output_folder, f"epoch_{epoch}_latent_walk_{CELEBA_EASY_LABELS[index]}.png"))
+
+
+
     test_accuracy = model.accuracy(data_loaders['test'])
     print("Test acc %.3f" % test_accuracy)
     writer.close()
+    model.save(files.output_folder)
     
 
 if __name__ == "__main__":
@@ -123,6 +176,8 @@ if __name__ == "__main__":
                         type=int,
                         help='Validation total number of samples'
                         )
+    parser.add_argument('--debug',
+                        action='store_true')
     args = parser.parse_args()
 
     main(args)

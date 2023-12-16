@@ -171,6 +171,9 @@ class CCVAE(nn.Module):
         elbo = (log_p_theta_x_z + log_py - kl - log_q_varphi_y_zc).mean()
         return -elbo
 
+    def reconstruction(self, image):
+        return self.decoder(dist.Normal(*self.encoder(image)).rsample())
+
     def save(self, path:str):
         torch.save(self.encoder, os.path.join(path,'encoder.pt'))
         torch.save(self.decoder, os.path.join(path,'decoder.pt'))
