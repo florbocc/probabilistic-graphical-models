@@ -51,7 +51,7 @@ class CCVAE(nn.Module):
         z = dist.Normal(*params_phi).rsample()
         zc, _ = z.split([self.num_labeled, self.num_unlabeled], -1)
         logits = self.classifier(zc.view(-1, self.num_labeled))
-        p = torch.sigmoid(logits)
+        p = torch.round(torch.sigmoid(logits))
         return p.eq(y).float().mean()
 
     def classifier_loss(self,
@@ -178,4 +178,4 @@ class CCVAE(nn.Module):
         torch.save(self.encoder, os.path.join(path,'encoder.pt'))
         torch.save(self.decoder, os.path.join(path,'decoder.pt'))
         torch.save(self.classifier, os.path.join(path,'classifier.pt'))
-        torch.save(self.cond_prior, os.path.join(path,'conditional_prior.pt'))
+        torch.save(self.conditional_prior, os.path.join(path,'conditional_prior.pt'))

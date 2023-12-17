@@ -109,7 +109,7 @@ def main(arguments):
             index = 0
             image_name = data_loaders['test'].dataset.filename[index]
             image_filepath = os.path.join(files.celeba_dataset_filepath, 'img_align_celeba', image_name)
-            image = transform(PIL.Image.open(image_filepath))
+            image = transform(PIL.Image.open(image_filepath)).to(device=device)
             
             a = 8
             Ns = 5
@@ -167,7 +167,7 @@ if __name__ == "__main__":
                         )
 
     parser.add_argument('--max_epochs',
-                        default=35,
+                        default=3,
                         type=int,
                         help='Maximum number of epochs'
                         )
