@@ -174,8 +174,23 @@ class CCVAE(nn.Module):
     def reconstruction(self, image):
         return self.decoder(dist.Normal(*self.encoder(image)).rsample())
 
+    def conditional_generation(self, image, label, num_sample):
+        z = dist.Normal(*self.encoder(image)).sample()
+        _, zs = z.split([self.num_labeled, self.num_unlabeled], 1)
+        zs = zs.expand([num_sample, -1])
+        zc = dist.Normal(*self.conditional_prior(label)).sample([num_sample])
+        new_z = torch.cat((zc, zs), axis=1)
+        return self.decoder(new_z)
+
+
     def save(self, path:str):
         torch.save(self.encoder, os.path.join(path,'encoder.pt'))
         torch.save(self.decoder, os.path.join(path,'decoder.pt'))
         torch.save(self.classifier, os.path.join(path,'classifier.pt'))
         torch.save(self.conditional_prior, os.path.join(path,'conditional_prior.pt'))
+    
+    def load(self, path:str):
+        self.encoder = torch.load(os.path.join(path,'encoder.pt'))
+        self.decoder = torch.load(os.path.join(path,'decoder.pt'))
+        self.classifier = torch.load(os.path.join(path,'classifier.pt'))
+        self.conditional_prior = torch.load(os.path.join(path,'conditional_prior.pt'))
