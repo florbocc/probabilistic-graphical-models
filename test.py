@@ -7,9 +7,10 @@ from scripts.model import CCVAE
 from torchvision.utils import save_image, make_grid
 import torchvision.transforms as transforms
 from scripts.utils import Files
+import torch.distributions as dist
 
 def main(arguments):
-
+    
     im_shape = (3, 64, 64)
     device = torch.device('cuda:0' if (torch.cuda.is_available()) else 'cpu')
     files = Files(arguments.datasets_path)
@@ -25,7 +26,6 @@ def main(arguments):
 
     model.load(arguments.model_path)
 
-
     data_loaders = setup_data_loaders(
         files.datasets_folder,
         arguments.supervised_fraction,
@@ -37,8 +37,7 @@ def main(arguments):
     image = image.to(device=device)
     label = label.to(device=device)
     # EXPERIMENTS
-
-    image_indices = [0,80,52,90]
+    image_indices = [0, 80, 52, 90]
 
     # CONDITIONAL GENERATION
     image_index = 0
@@ -55,7 +54,7 @@ def main(arguments):
             make_grid(reconstucted_samples, nrow=number_of_samples),
             os.path.join(arguments.model_path,
             f'test_conditional_generation_'+image_name))
-    
+
     # VARIANCE INTERVENING
     for image_index in image_indices:
         image_name = data_loaders['test'].dataset.filename[image_index]
@@ -81,6 +80,36 @@ def main(arguments):
                 os.path.join(arguments.model_path,
                 f'test_intervation_diff_on_label_{label_name}_'+image_name))
 
+    # CHARACTERISTIC SWAP
+    for image_index in image_indices:
+        image_name_1 = data_loaders['test'].dataset.filename[image_index]
+        image_name_2 = data_loaders['test'].dataset.filename[image_index+1]
+        image_1 = image[image_index, :]
+        image_2 = image[image_index+1, :]
+        z1 = dist.Normal(*model.encoder(image_1)).sample()
+        zc1, zs1 = z1.split([model.num_labeled, model.num_unlabeled], 1)
+        z2 = dist.Normal(*model.encoder(image_2)).sample()
+        zc2, zs2 = z2.split([model.num_labeled, model.num_unlabeled], 1)
+        new_z_1 = torch.cat((zc1, zs2), axis=1)
+        r1 = model.decoder(new_z_1)
+        new_z_2 = torch.cat((zc2, zs1), axis=1)
+        r2 = model.decoder(new_z_2)
+
+        save_image(
+            r1,
+            os.path.join(arguments.model_path,
+            f'test_swap_zc1_zs2_{image_name_2[:-4]}_'+image_name_1))
+        save_image(
+            r2,
+            os.path.join(arguments.model_path,
+            f'test_swap_zc2_zs1{image_name_2[:-4]}_'+image_name_1))
+        
+        save_image(
+            image_2,
+            os.path.join(arguments.model_path,
+            f'test_swap_'+image_name_2))
+        
+        
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
