@@ -6,7 +6,7 @@ import torch.nn as nn
 import os
 
 from scripts.model_sub_architectures import Classifier, CondPrior, Decoder, Encoder
-
+from scripts.dataset import CELEBA_EASY_LABELS
 
 class CCVAE(nn.Module):
     def __init__(self,
@@ -27,7 +27,7 @@ class CCVAE(nn.Module):
         self.encoder = Encoder(z_dim)
         self.decoder = Decoder(z_dim)
         self.classifier = Classifier(self.num_labeled)
-        self.conditional_prior = CondPrior(self.num_labeled)
+        self.cond_prior = CondPrior(self.num_labeled)
 
     def accuracy(
             self,
@@ -99,7 +99,7 @@ class CCVAE(nn.Module):
         log_q_varphi_y_zc = q_varphi_y_zc.log_prob(y).sum(dim=-1)
 
         # Conditional Prior
-        mu_psi, sigma_psi = self.conditional_prior(y)
+        mu_psi, sigma_psi = self.cond_prior(y)
         params_psi = (
             torch.cat([mu_psi, torch.zeros(1, self.num_unlabeled, device=self.device).expand(batch_size, -1)], dim=1),
             torch.cat([sigma_psi, torch.ones(1, self.num_unlabeled, device=self.device).expand(batch_size, -1)], dim=1))
@@ -152,7 +152,7 @@ class CCVAE(nn.Module):
         log_q_varphi_y_zc = q_varphi_y_zc.log_prob(y).sum(dim=-1)
 
         # Conditional Prior
-        mu_psi, sigma_psi = self.conditional_prior(y)
+        mu_psi, sigma_psi = self.cond_prior(y)
         params_psi = (
             torch.cat([mu_psi, torch.zeros(1, self.num_unlabeled, device=self.device).expand(batch_size, -1)], dim=1),
             torch.cat([sigma_psi, torch.ones(1, self.num_unlabeled, device=self.device).expand(batch_size, -1)], dim=1))
@@ -178,19 +178,85 @@ class CCVAE(nn.Module):
         z = dist.Normal(*self.encoder(image)).sample()
         _, zs = z.split([self.num_labeled, self.num_unlabeled], 1)
         zs = zs.expand([num_sample, -1])
-        zc = dist.Normal(*self.conditional_prior(label)).sample([num_sample])
+        zc = dist.Normal(*self.cond_prior(label)).sample([num_sample])
         new_z = torch.cat((zc, zs), axis=1)
         return self.decoder(new_z)
+
+    def _latent_walk_1d_samples(self,
+                                label_index: int,
+                                a: int = 5,
+                                num_samples: int = 5
+                                ) -> torch.tensor:
+        y = torch.zeros(1, len(CELEBA_EASY_LABELS), device=self.device)
+        mu_psi_f, sigma_psi_f = self.cond_prior(y)
+        y[:, label_index].fill_(1.0)
+        mu_psi_t, sigma_psi_t = self.cond_prior(y)
+        s = torch.sign(mu_psi_t[:, label_index] - mu_psi_f[:, label_index])
+        z_false_lim = (mu_psi_f[:, label_index] - a * s * sigma_psi_f[:, label_index]).item() 
+        z_true_lim = (mu_psi_t[:, label_index] + a * s * sigma_psi_t[:, label_index]).item()
+        return torch.linspace(z_false_lim, z_true_lim, num_samples)
+
+    def latent_walk_1d(self,
+                       base_z: torch.tensor,
+                       label: str,
+                       a: int = 5,
+                       num_samples: int = 5
+                       ) -> torch.tensor:
+        if label not in CELEBA_EASY_LABELS:
+            raise ValueError(f'Label:{label} not in {CELEBA_EASY_LABELS}')
+        label_index = np.where(np.array(CELEBA_EASY_LABELS) == label)[0][0]
+
+        z = base_z.clone()
+        z = z.expand(num_samples, -1).contiguous()
+        interpolated_values = self._latent_walk_1d_samples(
+            label_index=label_index,
+            a=a,
+            num_samples=num_samples)
+        z[:, label_index] = interpolated_values
+        return self.decoder(z).view(
+            -1, self.image_shape[0],  self.image_shape[1],  self.image_shape[2])
+
+    def latent_walk_2d(self,
+                       base_z: torch.tensor,
+                       label_1: str,
+                       label_2: str,
+                       a: int = 5,
+                       num_samples: int = 5
+                       ) -> torch.tensor:
+        if label_1 not in CELEBA_EASY_LABELS:
+            raise ValueError(f'Label:{label_1} not in {CELEBA_EASY_LABELS}')
+        if label_2 not in CELEBA_EASY_LABELS:
+            raise ValueError(f'Label:{label_2} not in {CELEBA_EASY_LABELS}')
+        label_index_1 = np.where(np.array(CELEBA_EASY_LABELS) == label_1)[0][0]
+        label_index_2 = np.where(np.array(CELEBA_EASY_LABELS) == label_2)[0][0]
+
+        z = base_z.clone()
+        z = z.expand(num_samples**2, -1).contiguous()
+        interpolated_values_1 = self._latent_walk_1d_samples(
+            label_index=label_index_1,
+            a=a,
+            num_samples=num_samples)
+        interpolated_values_2 = self._latent_walk_1d_samples(
+            label_index=label_index_2,
+            a=a,
+            num_samples=num_samples)
+        values_label_1, values_label_2 = torch.meshgrid(
+            interpolated_values_1,
+            interpolated_values_2)
+        z[:, label_index_1] = values_label_1.reshape(-1)
+        z[:, label_index_2] = values_label_2.reshape(-1)
+        return self.decoder(z).view(
+            -1, self.image_shape[0],  self.image_shape[1],  self.image_shape[2])
 
 
     def save(self, path:str):
         torch.save(self.encoder, os.path.join(path,'encoder.pt'))
         torch.save(self.decoder, os.path.join(path,'decoder.pt'))
         torch.save(self.classifier, os.path.join(path,'classifier.pt'))
-        torch.save(self.conditional_prior, os.path.join(path,'conditional_prior.pt'))
+        torch.save(self.cond_prior, os.path.join(path,'conditional_prior.pt'))
     
     def load(self, path:str):
         self.encoder = torch.load(os.path.join(path,'encoder.pt'))
         self.decoder = torch.load(os.path.join(path,'decoder.pt'))
         self.classifier = torch.load(os.path.join(path,'classifier.pt'))
-        self.conditional_prior = torch.load(os.path.join(path,'conditional_prior.pt'))
+        self.cond_prior = torch.load(os.path.join(path,'conditional_prior.pt'))

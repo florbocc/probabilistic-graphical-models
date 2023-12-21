@@ -1,5 +1,6 @@
 import argparse
 import os
+import numpy as np
 
 import torch
 from scripts.dataset import CELEBA_EASY_LABELS, setup_data_loaders
@@ -8,14 +9,13 @@ from torchvision.utils import save_image, make_grid
 import torchvision.transforms as transforms
 from scripts.utils import Files
 import torch.distributions as dist
+from PIL import Image
 
 def main(arguments):
     
     im_shape = (3, 64, 64)
     device = torch.device('cuda:0' if (torch.cuda.is_available()) else 'cpu')
     files = Files(arguments.datasets_path)
-    print('Loading and Splitting Dataset')
-
     model = CCVAE(
         z_dim=arguments.z_dim,
         y_prior_params=0.5 * torch.ones(len(CELEBA_EASY_LABELS), device=device),
@@ -23,10 +23,12 @@ def main(arguments):
         device=device,
         image_shape=im_shape
         )
-
-    model.load(arguments.model_path)
+    model_params = torch.load(os.path.join(arguments.model_path, 'model.pt'))
+    model.load_state_dict(model_params)
     model.to(device)
     model.eval()
+    print('Loading and Splitting Dataset')
+
     data_loaders = setup_data_loaders(
         files.datasets_folder,
         arguments.supervised_fraction,
@@ -36,9 +38,9 @@ def main(arguments):
     image, label = next(iter(data_loaders['test']))
     image = image.to(device=device)
     label = label.to(device=device)
+
     # EXPERIMENTS
-    image_indices = [0, 80, 52, 90, 89, 63, 50, 87]
-    
+    image_indices = [80, 52, 10, 9]
     # CONDITIONAL GENERATION
     image_index = 0
     number_of_samples = 4
@@ -60,7 +62,8 @@ def main(arguments):
         image_name = data_loaders['test'].dataset.filename[image_index]
         y = label[image_index, :]
         labels_intervation = image[image_index, :].view(1, im_shape[0], im_shape[1], im_shape[2])
-        for i, label_name in enumerate(['Bangs', 'Black_Hair', 'Blond_Hair', 'Brown_Hair', 'Eyeglasses', 'Male','Young']):
+        labels = ['Bangs', 'Black_Hair', 'Blond_Hair', 'Brown_Hair', 'Eyeglasses', 'Male','Young']
+        for i, label_name in enumerate(labels):
             if y[i] == 1:
                 r = torch.zeros_like(image[image_index, :], device=device).view(1, im_shape[0], im_shape[1], im_shape[2])
             else:
@@ -74,13 +77,13 @@ def main(arguments):
         transform = transforms.Grayscale()
         dif = torch.round(torch.abs(transform(labels_intervation) - transform(image[image_index, :])))
         save_image(
-            make_grid(dif, nrow=len(image_indices)),
+            make_grid(dif, nrow=1),
             os.path.join(files.output_folder,
-            f'test_intervation_diff_on_label_{label_name}_'+image_name))
+            f'test_intervation_diff_'+image_name))
         save_image(
-                make_grid(labels_intervation, nrow=len(image_indices)),
+                make_grid(labels_intervation, nrow=1),
                 os.path.join(files.output_folder,
-                f'test_intervation_on_label_{label_name}_'+image_name))
+                f'test_intervation_'+image_name))
 
     # CHARACTERISTIC SWAP
     for i in image_indices:
@@ -101,7 +104,41 @@ def main(arguments):
         save_image(
             make_grid(row_recon, nrow=len(image_indices)+1),
             os.path.join(files.output_folder,
-            f'test_swap_zc1_zs2_{image_name_2[:-4]}_'+image_name_1))
+            f'test_swap_zc1_zs2_'+image_name_1))
+
+    # LATENT WALK 1D
+    labels = ['Eyeglasses', 'Bangs']
+    Ns = 5
+    for i in image_indices:
+        image_name = data_loaders['test'].dataset.filename[i]
+        base_z = dist.Normal(*model.encoder(image[i, :])).sample()
+        for l in labels:
+            samples = model.latent_walk_1d(
+                base_z=base_z,
+                label=l,
+                num_samples=Ns)
+            grid = make_grid(samples, nrow=Ns)
+            filename = f"latent_walk_{l}_{image_name}"
+            save_image(grid, os.path.join(files.output_folder, filename))
+
+    # LATENT WALK 2D
+    labels_1 = ['Eyeglasses']
+    labels_2 = ['Bangs']
+    Ns = 5
+    for i in image_indices:
+        image_name = data_loaders['test'].dataset.filename[i]
+        base_z = dist.Normal(*model.encoder(image[i, :])).sample()
+        for label_index in range(len(labels_1)):
+            samples = model.latent_walk_2d(
+                label_1=labels_1[label_index],
+                label_2=labels_2[label_index],
+                base_z=base_z,
+                num_samples=Ns,
+            )
+            grid = make_grid(samples, nrow=Ns)
+            filename = f"latent_walk_{labels_1[label_index]}_and_{labels_2[label_index]}_{image_name}"
+            save_image(grid, os.path.join(files.output_folder, filename))
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

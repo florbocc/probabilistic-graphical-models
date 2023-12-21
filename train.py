@@ -81,10 +81,10 @@ def main(arguments):
         with torch.no_grad():
             validation_accuracy = model.accuracy(
                 data_loaders['validation'])
-        print(f"[Epoch {epoch}] Sup Loss "
+        print(f"[Epoch {epoch}] Supervised -ELBO "
               f"{epoch_loss_supervised:.3f},"
-               f" Unsup Loss {epoch_loss_unsupervised:.3f},"
-              f" validation accuracy {validation_accuracy:.2f}"
+              f" Unsupervised -ELBO {epoch_loss_unsupervised:.3f},"
+              f" Validation classification accuracy {validation_accuracy:.2f}"
               )
         writer.add_scalar('Loss/train_supervised', epoch_loss_supervised, epoch)
         writer.add_scalar('Loss/train_unsupervised', epoch_loss_unsupervised, epoch)
@@ -99,41 +99,8 @@ def main(arguments):
                 image = transform(PIL.Image.open(image_filepath))
                 r = model.reconstruction(image.to(device=device))
                 save_image(r, os.path.join(files.output_folder, f'epoch_{epoch}_'+image_name))
-            
-            # Latent walk at every step
-            # Given a selected label save 3 samples per epoch
-            selected_labels = ['Blond_Hair', 'Smiling', 'Wavy_Hair', 'Wearing_Necktie']
-            index_labels = [i for i, l in enumerate(CELEBA_EASY_LABELS) if l in selected_labels]
-            
-            #Select an image 
-            index = 0
-            image_name = data_loaders['test'].dataset.filename[index]
-            image_filepath = os.path.join(files.celeba_dataset_filepath, 'img_align_celeba', image_name)
-            image = transform(PIL.Image.open(image_filepath)).to(device=device)
-            
-            a = 8
-            Ns = 5
-            z_ = dist.Normal(*model.encoder(image)).sample()
-            for index in index_labels:
-                z = z_.clone()
-                z = z.expand(Ns, -1).contiguous()
-                y = torch.zeros(1, len(CELEBA_EASY_LABELS), device=device)
-                mu_false, sigma_false = model.conditional_prior(y)
-                y[:, index].fill_(1.0)
-                mu_true, sigma_true = model.conditional_prior(y)
-                sign = torch.sign(mu_true[:, index] - mu_false[:, index])
-                z_false_lim = (mu_false[:, index] - a * sign * sigma_false[:, index]).item()    
-                z_true_lim = (mu_true[:, index] + a * sign * sigma_true[:, index]).item()
-                z[:, index] = torch.linspace(z_false_lim, z_true_lim, Ns)
-
-                imgs = model.decoder(z).view(-1, *im_shape)
-                grid = make_grid(imgs, nrow=Ns)
-                save_image(grid, os.path.join(files.output_folder, f"epoch_{epoch}_latent_walk_{CELEBA_EASY_LABELS[index]}.png"))
-
-
-
     test_accuracy = model.accuracy(data_loaders['test'])
-    print("Test acc %.3f" % test_accuracy)
+    print(f"Test accuracy {test_accuracy}")
     writer.close()
     model.save(files.output_folder)
     
