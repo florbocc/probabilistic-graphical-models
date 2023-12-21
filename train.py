@@ -35,7 +35,7 @@ def main(arguments):
         params=model.parameters(),
         lr=arguments.learning_rate)
     if arguments.debug:
-        # Save original image 
+        # Save original image
         debug_images_indices = [0, 50, 80, 90]
         for index in debug_images_indices:
             image_name = data_loaders['test'].dataset.filename[index]
@@ -102,8 +102,8 @@ def main(arguments):
     test_accuracy = model.accuracy(data_loaders['test'])
     print(f"Test accuracy {test_accuracy}")
     writer.close()
-    model.save(files.output_folder)
-    
+    model.save(files.models_output_path)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

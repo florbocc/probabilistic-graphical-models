@@ -248,15 +248,10 @@ class CCVAE(nn.Module):
         return self.decoder(z).view(
             -1, self.image_shape[0],  self.image_shape[1],  self.image_shape[2])
 
+    def save(self, model_path: str):
+        self.to(device='cpu')
+        self._save_to_state_dict(os.path.join(model_path, 'model.pt'))
 
-    def save(self, path:str):
-        torch.save(self.encoder, os.path.join(path,'encoder.pt'))
-        torch.save(self.decoder, os.path.join(path,'decoder.pt'))
-        torch.save(self.classifier, os.path.join(path,'classifier.pt'))
-        torch.save(self.cond_prior, os.path.join(path,'conditional_prior.pt'))
-    
-    def load(self, path:str):
-        self.encoder = torch.load(os.path.join(path,'encoder.pt'))
-        self.decoder = torch.load(os.path.join(path,'decoder.pt'))
-        self.classifier = torch.load(os.path.join(path,'classifier.pt'))
-        self.cond_prior = torch.load(os.path.join(path,'conditional_prior.pt'))
+    def load(self, model_path: str):
+        model_params = torch.load(os.path.join(model_path))
+        self.load_state_dict(model_params)

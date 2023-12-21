@@ -11,6 +11,7 @@ class FileError(ValueError):
 class Files:
     datasets_folder: str
     output_base_folder: str = './data/output'
+    models_output_path: str = './data/models'
 
     def __post_init__(self):
         # Input
@@ -28,3 +29,6 @@ class Files:
             self.output_base_folder,
             self.output_name)
         os.makedirs(self.output_folder)
+        # Models
+        if not os.path.exists(self.models_output_path):
+            os.makedirs(self.models_output_path)

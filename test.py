@@ -11,9 +11,9 @@ from scripts.utils import Files
 import torch.distributions as dist
 from PIL import Image
 
+
 def main(arguments):
-    
-    im_shape = (3, 64, 64)
+    image_shape = (3, 64, 64)
     device = torch.device('cuda:0' if (torch.cuda.is_available()) else 'cpu')
     files = Files(arguments.datasets_path)
     model = CCVAE(
@@ -21,14 +21,12 @@ def main(arguments):
         y_prior_params=0.5 * torch.ones(len(CELEBA_EASY_LABELS), device=device),
         num_classes=len(CELEBA_EASY_LABELS),
         device=device,
-        image_shape=im_shape
+        image_shape=image_shape
         )
-    model_params = torch.load(os.path.join(arguments.model_path, 'model.pt'))
-    model.load_state_dict(model_params)
+    model.load(os.path.join(arguments.model_path, 'model.pt'))
     model.to(device)
     model.eval()
     print('Loading and Splitting Dataset')
-
     data_loaders = setup_data_loaders(
         files.datasets_folder,
         arguments.supervised_fraction,
@@ -42,30 +40,27 @@ def main(arguments):
     # EXPERIMENTS
     image_indices = [80, 52, 10, 9]
     # CONDITIONAL GENERATION
-    image_index = 0
     number_of_samples = 4
     for image_index in image_indices:
         image_name = data_loaders['test'].dataset.filename[image_index]
         reconstucted_samples = model.conditional_generation(image[image_index, :], label[image_index, :], num_sample=number_of_samples)
         save_image(
             image[image_index, :],
-            os.path.join(files.output_folder,
-            f'original_'+image_name))
+            os.path.join(files.output_folder, 'original_'+image_name))
 
         save_image(
             make_grid(reconstucted_samples, nrow=number_of_samples),
-            os.path.join(files.output_folder,
-            f'test_conditional_generation_'+image_name))
+            os.path.join(files.output_folder, 'test_conditional_generation_'+image_name))
 
     # VARIANCE INTERVENING
     for image_index in image_indices:
         image_name = data_loaders['test'].dataset.filename[image_index]
         y = label[image_index, :]
-        labels_intervation = image[image_index, :].view(1, im_shape[0], im_shape[1], im_shape[2])
+        labels_intervation = image[image_index, :].view(1, image_shape[0], image_shape[1], image_shape[2])
         labels = ['Bangs', 'Black_Hair', 'Blond_Hair', 'Brown_Hair', 'Eyeglasses', 'Male','Young']
         for i, label_name in enumerate(labels):
             if y[i] == 1:
-                r = torch.zeros_like(image[image_index, :], device=device).view(1, im_shape[0], im_shape[1], im_shape[2])
+                r = torch.zeros_like(image[image_index, :], device=device).view(1, image_shape[0], image_shape[1], image_shape[2])
             else:
                 y[i] = 1
                 r = model.conditional_generation(
@@ -89,9 +84,8 @@ def main(arguments):
     for i in image_indices:
         image_name_1 = data_loaders['test'].dataset.filename[i]
         image_1 = image[i, :]
-        row_recon = image_1.view(1, im_shape[0], im_shape[1], im_shape[2])
+        row_recon = image_1.view(1, image_shape[0], image_shape[1], image_shape[2])
         for j in image_indices:
-            image_name_2 = data_loaders['test'].dataset.filename[j]
             image_2 = image[j, :]
             z1 = dist.Normal(*model.encoder(image_1)).sample()
             zc1, zs1 = z1.split([model.num_labeled, model.num_unlabeled], 1)
@@ -107,7 +101,7 @@ def main(arguments):
             f'test_swap_zc1_zs2_'+image_name_1))
 
     # LATENT WALK 1D
-    labels = ['Eyeglasses', 'Bangs']
+    labels = ['Eyeglasses', 'Bangs', 'Wearing_Necktie', 'Smiling', 'Straight_Hair']
     Ns = 5
     for i in image_indices:
         image_name = data_loaders['test'].dataset.filename[i]
@@ -122,8 +116,8 @@ def main(arguments):
             save_image(grid, os.path.join(files.output_folder, filename))
 
     # LATENT WALK 2D
-    labels_1 = ['Eyeglasses']
-    labels_2 = ['Bangs']
+    labels_1 = ['Eyeglasses', 'Smiling', 'Wearing_Necktie']
+    labels_2 = ['Bangs', 'Bangs', 'Eyeglasses']
     Ns = 5
     for i in image_indices:
         image_name = data_loaders['test'].dataset.filename[i]
@@ -143,7 +137,7 @@ def main(arguments):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_path',
-                        default='data/output',
+                        default='data/models',
                         type=str,
                         help='Model path'
                         )
