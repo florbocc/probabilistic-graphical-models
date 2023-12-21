@@ -1,6 +1,7 @@
 import argparse
 import os
 import PIL
+import numpy as np
 
 import torch
 from torchvision.utils import save_image, make_grid
@@ -22,10 +23,15 @@ def main(arguments):
         arguments.supervised_fraction,
         batch_size=arguments.batch_size,
         validation_size=arguments.validation_size)
-
+    # FIXME: this shoulb be improved, this is a fast fix to make
+    # the code work with supervision fraction = 0
+    if data_loaders['supervised'] is None:
+        y_prior_params = 0.5 * torch.ones(len(CELEBA_EASY_LABELS))
+    else:
+        y_prior_params = data_loaders['supervised'].dataset.labels_prior_params().to(device=device)
     model = CCVAE(
         z_dim=arguments.z_dim,
-        y_prior_params=data_loaders['supervised'].dataset.labels_prior_params().to(device=device),
+        y_prior_params=y_prior_params,
         num_classes=len(CELEBA_EASY_LABELS),
         device=device,
         image_shape=im_shape
@@ -46,21 +52,30 @@ def main(arguments):
         epoch_loss_supervised = 0
         epoch_loss_unsupervised = 0
 
-        supervised_batch = iter(data_loaders['supervised'])
-        unsupervised_batch = iter(data_loaders['unsupervised'])
-        
-        # FIXME: Again not considering limits 0 and 1
-        n_supervised_batches = len(data_loaders['supervised'])
-        batches_per_epoch = n_supervised_batches +\
-            len(data_loaders['unsupervised'])
-        Tsup = batches_per_epoch // n_supervised_batches
-        count_sup = 0
+        if arguments.supervised_fraction > 0 and arguments.supervised_fraction < 1:
+            supervised_batch = iter(data_loaders['supervised'])
+            unsupervised_batch = iter(data_loaders['unsupervised'])
+            n_supervised_batches = len(data_loaders['supervised'])
+            batches_per_epoch = n_supervised_batches +\
+                len(data_loaders['unsupervised'])
+            Tsup = batches_per_epoch // n_supervised_batches
+        elif arguments.supervised_fraction == 0:
+            unsupervised_batch = iter(data_loaders['unsupervised'])
+            n_supervised_batches = 0
+            batches_per_epoch = len(data_loaders['unsupervised'])
+            Tsup = np.nan
+        elif arguments.supervised_fraction == 1:
+            supervised_batch = iter(data_loaders['supervised'])
+            n_supervised_batches = len(data_loaders['supervised'])
+            batches_per_epoch = n_supervised_batches
+            Tsup = batches_per_epoch // n_supervised_batches
 
+        count_sup = 0
         # In this case we want to train with both supervised
         # and unsupervised dataset. The first one is going to
         # be iterated at a period Tsup
         for i in tqdm(range(batches_per_epoch), desc='Batch per epoch'):
-            if i % Tsup == 0 and count_sup < n_supervised_batches:
+            if count_sup < n_supervised_batches and i % Tsup == 0:
                 (images, labels) = next(supervised_batch)
                 loss = model.supervised_ELBO(
                     images.to(device),
@@ -71,24 +86,29 @@ def main(arguments):
                 (images, _) = next(unsupervised_batch)
                 loss = model.unsupervised_ELBO(images.to(device))
                 epoch_loss_unsupervised+=loss.detach().item()
-            
+
             # backward
             loss.backward()
             # optimization step
             optimizer.step()
             optimizer.zero_grad()
-        # validation
-        with torch.no_grad():
-            validation_accuracy = model.accuracy(
-                data_loaders['validation'])
-        print(f"[Epoch {epoch}] Supervised -ELBO "
-              f"{epoch_loss_supervised:.3f},"
-              f" Unsupervised -ELBO {epoch_loss_unsupervised:.3f},"
-              f" Validation classification accuracy {validation_accuracy:.2f}"
-              )
+        if arguments.supervised_fraction > 0:
+            # validation
+            with torch.no_grad():
+                validation_accuracy = model.accuracy(
+                    data_loaders['validation'])
+            print(f"[Epoch {epoch}] Supervised -ELBO "
+                  f"{epoch_loss_supervised:.3f},"
+                  f" Unsupervised -ELBO {epoch_loss_unsupervised:.3f},"
+                  f" Validation classification accuracy {validation_accuracy:.2f}"
+                 )
+            writer.add_scalar('accuracy', validation_accuracy, epoch)
+        else:
+            print(f"[Epoch {epoch}] Supervised -ELBO "
+                  f"{epoch_loss_supervised:.3f},"
+                  f" Unsupervised -ELBO {epoch_loss_unsupervised:.3f}")
         writer.add_scalar('Loss/train_supervised', epoch_loss_supervised, epoch)
         writer.add_scalar('Loss/train_unsupervised', epoch_loss_unsupervised, epoch)
-        writer.add_scalar('accuracy', validation_accuracy, epoch)
 
         if arguments.debug:
             # Save reconstruction of each image

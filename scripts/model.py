@@ -250,7 +250,7 @@ class CCVAE(nn.Module):
 
     def save(self, model_path: str):
         self.to(device='cpu')
-        self._save_to_state_dict(os.path.join(model_path, 'model.pt'))
+        torch.save(self.state_dict(), os.path.join(model_path, 'model.pt'))
 
     def load(self, model_path: str):
         model_params = torch.load(os.path.join(model_path))

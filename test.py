@@ -101,7 +101,7 @@ def main(arguments):
             f'test_swap_zc1_zs2_'+image_name_1))
 
     # LATENT WALK 1D
-    labels = ['Eyeglasses', 'Bangs', 'Wearing_Necktie', 'Smiling', 'Straight_Hair']
+    labels = ['Eyeglasses', 'Bangs', 'Wearing_Necktie', 'Smiling', 'Chubby']
     Ns = 5
     for i in image_indices:
         image_name = data_loaders['test'].dataset.filename[i]

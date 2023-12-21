@@ -94,18 +94,40 @@ def setup_data_loaders(
     X = train_data.filename[:-validation_size]
     y = train_data.attr[:-validation_size]
     # FIXME: we are not considering the case sf= 0 o 1
-    split = int(supervised_fraction * len(X))
-    supervised_train_data.attr = y[:split]
-    supervised_train_data.filename = X[:split]
-    supervised_train_data.update_prior()
-    unsupervised_train_data.attr = y[split:]
-    unsupervised_train_data.filename = X[split:]
+    if supervised_fraction > 0 and supervised_fraction < 1:
+        split = int(supervised_fraction * len(X))
+        supervised_train_data.attr = y[:split]
+        supervised_train_data.filename = X[:split]
+        supervised_train_data.update_prior()
+        unsupervised_train_data.attr = y[split:]
+        unsupervised_train_data.filename = X[split:]
 
-    # loaders
-    loaders = {
-        'unsupervised': DataLoader(unsupervised_train_data, batch_size=batch_size, shuffle=True, **kwargs),
-        'supervised': DataLoader(supervised_train_data, batch_size=batch_size, shuffle=True, **kwargs),
-        'validation': DataLoader(validation_data, batch_size=batch_size, shuffle=True, **kwargs),
-        'test': DataLoader(test_data, batch_size=batch_size, shuffle=True, **kwargs),
-    }
+        # loaders
+        loaders = {
+            'unsupervised': DataLoader(unsupervised_train_data, batch_size=batch_size, shuffle=True, **kwargs),
+            'supervised': DataLoader(supervised_train_data, batch_size=batch_size, shuffle=True, **kwargs),
+            'validation': DataLoader(validation_data, batch_size=batch_size, shuffle=True, **kwargs),
+            'test': DataLoader(test_data, batch_size=batch_size, shuffle=True, **kwargs),
+        }
+    elif supervised_fraction == 1:
+        supervised_train_data.attr = y
+        supervised_train_data.filename = X
+        supervised_train_data.update_prior()
+        loaders = {
+            'unsupervised': None,
+            'supervised': DataLoader(supervised_train_data, batch_size=batch_size, shuffle=True, **kwargs),
+            'validation': DataLoader(validation_data, batch_size=batch_size, shuffle=True, **kwargs),
+            'test': DataLoader(test_data, batch_size=batch_size, shuffle=True, **kwargs),
+        }
+    elif supervised_fraction == 0:
+        unsupervised_train_data.attr = y
+        unsupervised_train_data.filename = X
+
+        # loaders
+        loaders = {
+            'unsupervised': DataLoader(unsupervised_train_data, batch_size=batch_size, shuffle=True, **kwargs),
+            'supervised': None,
+            'validation': DataLoader(validation_data, batch_size=batch_size, shuffle=True, **kwargs),
+            'test': DataLoader(test_data, batch_size=batch_size, shuffle=True, **kwargs),
+        }
     return loaders
