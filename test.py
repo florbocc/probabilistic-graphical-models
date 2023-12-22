@@ -18,7 +18,7 @@ def main(arguments):
     files = Files(arguments.datasets_path)
     model = CCVAE(
         z_dim=arguments.z_dim,
-        y_prior_params=0.5 * torch.ones(len(CELEBA_EASY_LABELS), device=device),
+        pi=0.5 * torch.ones(len(CELEBA_EASY_LABELS), device=device),
         num_classes=len(CELEBA_EASY_LABELS),
         device=device,
         image_shape=image_shape
@@ -103,35 +103,40 @@ def main(arguments):
     # LATENT WALK 1D
     labels = ['Eyeglasses', 'Bangs', 'Wearing_Necktie', 'Smiling', 'Chubby']
     Ns = 5
-    for i in image_indices:
-        image_name = data_loaders['test'].dataset.filename[i]
-        base_z = dist.Normal(*model.encoder(image[i, :])).sample()
-        for l in labels:
-            samples = model.latent_walk_1d(
-                base_z=base_z,
-                label=l,
-                num_samples=Ns)
-            grid = make_grid(samples, nrow=Ns)
-            filename = f"latent_walk_{l}_{image_name}"
-            save_image(grid, os.path.join(files.output_folder, filename))
+    for a in np.linspace(0, 8, 9):
+        for i in image_indices:
+            image_name = data_loaders['test'].dataset.filename[i]
+            base_z = dist.Normal(*model.encoder(image[i, :])).sample()
+            for l in labels:
+                samples = model.latent_walk_1d(
+                    base_z=base_z,
+                    label=l,
+                    num_samples=Ns,
+                    a=a)
+                grid = make_grid(samples, nrow=Ns)
+                filename = f"latent_walk_{l}_{a:0.2f}_{image_name}"
+                save_image(grid, os.path.join(files.output_folder, filename))
 
     # LATENT WALK 2D
     labels_1 = ['Eyeglasses', 'Smiling', 'Wearing_Necktie']
     labels_2 = ['Bangs', 'Bangs', 'Eyeglasses']
     Ns = 5
+        
     for i in image_indices:
-        image_name = data_loaders['test'].dataset.filename[i]
-        base_z = dist.Normal(*model.encoder(image[i, :])).sample()
-        for label_index in range(len(labels_1)):
-            samples = model.latent_walk_2d(
-                label_1=labels_1[label_index],
-                label_2=labels_2[label_index],
-                base_z=base_z,
-                num_samples=Ns,
-            )
-            grid = make_grid(samples, nrow=Ns)
-            filename = f"latent_walk_{labels_1[label_index]}_and_{labels_2[label_index]}_{image_name}"
-            save_image(grid, os.path.join(files.output_folder, filename))
+        for a in np.linspace(0, 8, 9):
+            image_name = data_loaders['test'].dataset.filename[i]
+            base_z = dist.Normal(*model.encoder(image[i, :])).sample()
+            for label_index in range(len(labels_1)):
+                samples = model.latent_walk_2d(
+                    label_1=labels_1[label_index],
+                    label_2=labels_2[label_index],
+                    base_z=base_z,
+                    num_samples=Ns,
+                    a=a,
+                )
+                grid = make_grid(samples, nrow=Ns)
+                filename = f"latent_walk_a_{a:0.2f}_{labels_1[label_index]}_and_{labels_2[label_index]}_{image_name}"
+                save_image(grid, os.path.join(files.output_folder, filename))
 
 
 if __name__ == "__main__":

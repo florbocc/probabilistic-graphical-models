@@ -5,13 +5,13 @@ from torch.utils.data import DataLoader
 import torch.nn as nn
 import os
 
-from scripts.model_sub_architectures import Classifier, CondPrior, Decoder, Encoder
+from scripts.model_sub_architectures import Classifier, ConditionalPrior, Decoder, Encoder
 from scripts.dataset import CELEBA_EASY_LABELS
 
 class CCVAE(nn.Module):
     def __init__(self,
                  z_dim: int,
-                 y_prior_params: list,
+                 pi: list,
                  num_classes: int,
                  image_shape: tuple,
                  device,
@@ -19,7 +19,7 @@ class CCVAE(nn.Module):
                  **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.z_dim = z_dim
-        self.y_prior_params = y_prior_params
+        self.pi = pi
         self.num_labeled = num_classes
         self.num_unlabeled = z_dim - num_classes
         self.device = device
@@ -27,7 +27,7 @@ class CCVAE(nn.Module):
         self.encoder = Encoder(z_dim)
         self.decoder = Decoder(z_dim)
         self.classifier = Classifier(self.num_labeled)
-        self.cond_prior = CondPrior(self.num_labeled)
+        self.conditional_prior = ConditionalPrior(self.num_labeled)
 
     def accuracy(
             self,
@@ -96,34 +96,34 @@ class CCVAE(nn.Module):
         logits_c = self.classifier(zc)
         # the label predicted distribution
         q_varphi_y_zc = dist.Bernoulli(logits=logits_c)
-        log_q_varphi_y_zc = q_varphi_y_zc.log_prob(y).sum(dim=-1)
+        log_qy = q_varphi_y_zc.log_prob(y).sum(dim=-1)
 
         # Conditional Prior
-        mu_psi, sigma_psi = self.cond_prior(y)
+        mu_psi, sigma_psi = self.conditional_prior(y)
         params_psi = (
             torch.cat([mu_psi, torch.zeros(1, self.num_unlabeled, device=self.device).expand(batch_size, -1)], dim=1),
             torch.cat([sigma_psi, torch.ones(1, self.num_unlabeled, device=self.device).expand(batch_size, -1)], dim=1))
         p_psi_z_y = dist.Normal(*params_psi)
 
         # The prior labeled data
-        p = self.y_prior_params.expand(batch_size, -1)
+        p = self.pi.expand(batch_size, -1)
         log_py = dist.Bernoulli(p).log_prob(y).sum(dim=-1)
 
         # Classifier Loss
-        log_q_varphi_phi_y_x = self.classifier_loss(x, y)
+        log_qy_varphi_phi = self.classifier_loss(x, y)
 
         # Generative model distribution
         p_theta_x_z = dist.Laplace(r, torch.ones_like(r))
-        log_p_theta_x_z = p_theta_x_z.log_prob(x).sum(dim=(1,2,3))
+        log_px = p_theta_x_z.log_prob(x).sum(dim=(1,2,3))
 
         # Following appendix c.3.1
         q_phi_y_zc_ = dist.Bernoulli(logits=self.classifier(zc.detach()))
         log_q_phi_y_zc_ = q_phi_y_zc_.log_prob(y).sum(dim=-1)
-        w = torch.exp(log_q_phi_y_zc_ - log_q_varphi_phi_y_x)
+        w = torch.exp(log_q_phi_y_zc_ - log_qy_varphi_phi)
 
         # ELBO
         kl = dist.kl.kl_divergence(q_phi_z_x, p_psi_z_y).sum(dim=-1)
-        elbo = (w * (log_p_theta_x_z - kl - log_q_varphi_y_zc) + log_py + log_q_varphi_phi_y_x).mean()
+        elbo = (w * (log_px - kl - log_qy) + log_py + log_qy_varphi_phi).mean()
         return -elbo
 
     def unsupervised_ELBO(self,
@@ -149,26 +149,26 @@ class CCVAE(nn.Module):
         # the label predicted distribution
         q_varphi_y_zc = dist.Bernoulli(logits=p_c)
         y = q_varphi_y_zc.sample()
-        log_q_varphi_y_zc = q_varphi_y_zc.log_prob(y).sum(dim=-1)
+        log_qy = q_varphi_y_zc.log_prob(y).sum(dim=-1)
 
         # Conditional Prior
-        mu_psi, sigma_psi = self.cond_prior(y)
+        mu_psi, sigma_psi = self.conditional_prior(y)
         params_psi = (
             torch.cat([mu_psi, torch.zeros(1, self.num_unlabeled, device=self.device).expand(batch_size, -1)], dim=1),
             torch.cat([sigma_psi, torch.ones(1, self.num_unlabeled, device=self.device).expand(batch_size, -1)], dim=1))
         p_psi_z_y = dist.Normal(*params_psi)
 
         # The prior labeled data
-        p = 0.5 * torch.ones_like(self.y_prior_params).expand(batch_size, -1)
+        p = 0.5 * torch.ones_like(self.pi).expand(batch_size, -1)
         log_py = dist.Bernoulli(p).log_prob(y).sum(dim=-1)
 
         # Generative model distribution
         p_theta_x_z = dist.Laplace(r, torch.ones_like(r))
-        log_p_theta_x_z = p_theta_x_z.log_prob(images).sum(dim=(1,2,3))
+        log_px = p_theta_x_z.log_prob(images).sum(dim=(1,2,3))
 
         # ELBO
         kl = dist.kl.kl_divergence(q_phi_z_x, p_psi_z_y).sum(dim=-1)
-        elbo = (log_p_theta_x_z + log_py - kl - log_q_varphi_y_zc).mean()
+        elbo = (log_px + log_py - kl - log_qy).mean()
         return -elbo
 
     def reconstruction(self, image):
@@ -178,7 +178,7 @@ class CCVAE(nn.Module):
         z = dist.Normal(*self.encoder(image)).sample()
         _, zs = z.split([self.num_labeled, self.num_unlabeled], 1)
         zs = zs.expand([num_sample, -1])
-        zc = dist.Normal(*self.cond_prior(label)).sample([num_sample])
+        zc = dist.Normal(*self.conditional_prior(label)).sample([num_sample])
         new_z = torch.cat((zc, zs), axis=1)
         return self.decoder(new_z)
 
@@ -188,9 +188,9 @@ class CCVAE(nn.Module):
                                 num_samples: int = 5
                                 ) -> torch.tensor:
         y = torch.zeros(1, len(CELEBA_EASY_LABELS), device=self.device)
-        mu_psi_f, sigma_psi_f = self.cond_prior(y)
+        mu_psi_f, sigma_psi_f = self.conditional_prior(y)
         y[:, label_index].fill_(1.0)
-        mu_psi_t, sigma_psi_t = self.cond_prior(y)
+        mu_psi_t, sigma_psi_t = self.conditional_prior(y)
         s = torch.sign(mu_psi_t[:, label_index] - mu_psi_f[:, label_index])
         z_false_lim = (mu_psi_f[:, label_index] - a * s * sigma_psi_f[:, label_index]).item() 
         z_true_lim = (mu_psi_t[:, label_index] + a * s * sigma_psi_t[:, label_index]).item()

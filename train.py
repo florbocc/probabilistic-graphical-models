@@ -26,12 +26,12 @@ def main(arguments):
     # FIXME: this shoulb be improved, this is a fast fix to make
     # the code work with supervision fraction = 0
     if data_loaders['supervised'] is None:
-        y_prior_params = 0.5 * torch.ones(len(CELEBA_EASY_LABELS))
+        pi = 0.5 * torch.ones(len(CELEBA_EASY_LABELS))
     else:
-        y_prior_params = data_loaders['supervised'].dataset.labels_prior_params().to(device=device)
+        pi = data_loaders['supervised'].dataset.labels_prior_params().to(device=device)
     model = CCVAE(
         z_dim=arguments.z_dim,
-        y_prior_params=y_prior_params,
+        pi=pi,
         num_classes=len(CELEBA_EASY_LABELS),
         device=device,
         image_shape=im_shape

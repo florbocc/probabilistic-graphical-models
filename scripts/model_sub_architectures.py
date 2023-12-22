@@ -85,9 +85,9 @@ class Classifier(nn.Module):
     def forward(self, x):
         return self.diag(x)
 
-class CondPrior(nn.Module):
+class ConditionalPrior(nn.Module):
     def __init__(self, dim):
-        super(CondPrior, self).__init__()
+        super(ConditionalPrior, self).__init__()
         self.dim = dim
         self.diag_loc_true = nn.Parameter(torch.zeros(self.dim))
         self.diag_loc_false = nn.Parameter(torch.zeros(self.dim))
